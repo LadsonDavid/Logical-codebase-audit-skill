@@ -17,7 +17,7 @@ The skill carries an embedded Business Knowledge Library. It knows what code mus
 
 Most code reviews check for bugs or style. This skill checks for **truthfulness**.
 
-The most dangerous gap in a codebase is not a bug. It is when the code "works" but does not do what the product claims it does. A feature described as "automatic" that requires a manual button press. A "bidirectional sync" that only reads. A "correlation engine" that is a sorted list. This skill finds those gaps and names them with evidence.
+The most dangerous gap in a codebase is not a bug. It is when the code "works" but does not do what the product claims it does. A feature described as "automatic" that requires a manual button press. A "bidirectional sync" that only reads. A "live dashboard" that is a polling endpoint hitting a cached table. This skill finds those gaps and names them with evidence.
 
 ---
 
@@ -38,11 +38,11 @@ That is it. Claude will detect and load it automatically.
 Tell Claude what to audit:
 
 ```
-Audit the codebase at /path/to/repo. The product claims real-time incident triage.
+Audit the codebase at /path/to/repo. The product claims real-time notifications.
 ```
 
 ```
-Is our Slack integration bidirectional or read-only? Check /src/integrations/
+Is our GitHub integration bidirectional or read-only? Check /src/integrations/
 ```
 
 ```
@@ -79,7 +79,7 @@ Every finding gets exactly one verdict:
 | `BROKEN` | Code exists, demonstrably non-functional |
 | `RISK` | Works today, identifiable failure mode at scale or edge case |
 
-**MISALIGNED is the most dangerous verdict.** The code passes tests. The feature ships. But it does not do what the business claims. This is the gap that costs you enterprise deals and breaks trust with early customers.
+**MISALIGNED is the most dangerous verdict.** The code passes tests. The feature ships. But it does not do what the business claims. This is the gap that costs enterprise deals and breaks trust with early customers.
 
 ---
 
@@ -92,14 +92,14 @@ No spec needed. The skill already knows what each claim requires in code.
 | "Automatic X" | Event listener, webhook handler, or background job (not a button) | `MISALIGNED` |
 | "Real-time Y" | WebSocket, SSE, or polling under 5 seconds | `MISALIGNED` |
 | "Bidirectional sync with Z" | Both GET and POST/PATCH calls to Z's API | `STUBBED` |
-| "Correlation engine" | Signal weighting or scoring algorithm, not a sorted list | `MISALIGNED` |
+| "Signal scoring engine" | Weighting or scoring algorithm, not a sorted list | `MISALIGNED` |
 | "Multi-tenant" | Tenant ID scoped on every single database query | `RISK` |
 | "Role-based access (RBAC)" | Permission checks inside business logic, not only route guards | `RISK` |
 | "Audit log" | Write events firing on every state-changing action | `PHANTOM / STUBBED` |
 | "One-click rollback" | Version snapshot and restore logic, not only a UI button | `STUBBED` |
-| "Deploy safety gate" | Pre-commit or pre-deploy hook that blocks on a failed condition | `PHANTOM` |
-| "Incident triage" | Parallel signal fetch across multiple sources with correlation scoring | `MISALIGNED` |
+| "Blocking pre-deploy check" | Pre-commit or pre-deploy hook that hard-stops on a failed condition | `PHANTOM` |
 | "Reduces time from X to Y" | Timing instrumentation in code (otherwise the claim is unverifiable) | `RISK` |
+| "Live dashboard" | Background job or push subscription, not a cached polling call | `MISALIGNED` |
 
 ---
 
@@ -120,7 +120,7 @@ No spec needed. The skill already knows what each claim requires in code.
 | 10 | First Principles Pass | What can be deleted? What exists with no discoverable justification? |
 | 11 | Chain-Link Report | Which single component sets the performance ceiling for everything else? |
 
-Phase 0 always runs first. The metalearning protocol maps the full codebase before any verdict is issued. The audit covers the actual codebase, not assumptions about it.
+Phase 0 always runs first. The metalearning protocol maps the full codebase before any verdict is issued.
 
 ---
 
@@ -129,40 +129,44 @@ Phase 0 always runs first. The metalearning protocol maps the full codebase befo
 ```
 CODE HONESTY REPORT
 ===================
-Product: Incident Response Platform
-Stack: TypeScript / Next.js / PostgreSQL
-Size: 847 files / 142,000 lines
+Product: Team Scheduling SaaS
+Stack: Node.js / React / PostgreSQL
+Size: 612 files / 98,000 lines
 
 CLAIM VERDICTS:
-- "automatic decision capture from conversations"
+
+- "Automatic schedule generation"
   -> MISALIGNED
-  Evidence: src/decisions/capture.ts:L88 — only a manual mark-as-decision button.
-            No NLP, pattern matching, or event listener found.
+  Evidence: src/schedule/generate.ts:L74 — function called only from a POST /generate
+            endpoint triggered by a user button click. No cron job, no event listener,
+            no background worker found.
 
-- "bidirectional Slack sync"
+- "Bidirectional Google Calendar sync"
   -> STUBBED
-  Evidence: src/integrations/slack.ts:L44 — GET /channels only.
-            No send-message, create-channel, or POST implementation.
+  Evidence: src/integrations/gcal.ts:L51 — GET /events only.
+            No write, insert, or patch calls to Google Calendar API anywhere in repo.
 
-- "real-time incident correlation"
+- "Real-time team availability updates"
   -> IMPLEMENTED + ALIGNED
-  Evidence: src/engines/correlation.ts — WebSocket feed + scoring algorithm
-            with 6 weighted signal sources.
+  Evidence: src/ws/availability.ts — WebSocket broadcast on every status change.
+            Client reconnect and heartbeat logic present.
 
-INTEGRATION SCORECARD: 3 of 7 claimed integrations fully real.
-STUBBED: Slack (write), PagerDuty (webhook), Datadog (write)
-PHANTOM: LaunchDarkly
+INTEGRATION SCORECARD: 2 of 5 claimed integrations fully real.
+STUBBED: Google Calendar (write), Slack (write)
+PHANTOM: Zoom (no API calls found), SSO (configuration UI only, no token exchange)
 
-CHAIN-LINK: src/engines/healthEngine.ts
-  If this is slow, all project health signals are delayed for every user.
-  No caching layer, no background computation. Called synchronously on every dashboard load.
+CHAIN-LINK: src/queries/schedule-builder.ts
+  Called on every page load. Performs 3 unbounded JOIN queries with no pagination.
+  No cache layer. This is the single component that sets the response time ceiling
+  for all users simultaneously.
 
 PHANTOM FEATURES:
-  "deploy safety gate" — no pre-commit hook, no blocking logic found in repo.
+  "AI-suggested meeting slots" — no model call, no scoring logic found in repo.
+  Referenced in README and pricing page. Zero code found.
 
 OVERALL: PARTIALLY HONEST
-  Core incident triage is real. 4 of 7 integrations are STUBBED or PHANTOM.
-  Chain-link unaddressed at current load.
+  Core scheduling works. 3 of 5 integrations are STUBBED or PHANTOM.
+  Chain-link query unaddressed at current user load.
 ```
 
 ---
@@ -198,7 +202,7 @@ Daniel Kahneman, Ray Dalio, Richard Rumelt, Peter Thiel, Carol Dweck, Clayton Ch
 
 ## Related
 
-This skill is the codebase-analysis companion to [logical-thinking](https://github.com/LadsonDavid/Logical-codebase-audit-skill) — which handles product and strategy evaluation through live browser verification alongside logical analysis.
+Companion to [logical-thinking](https://github.com/LadsonDavid/Logical-codebase-audit-skill) which runs product and strategy evaluation through live browser verification alongside logical analysis.
 
 ---
 
